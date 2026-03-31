@@ -29,23 +29,29 @@ const dashboard = require('./lib/routes/dashboard');
 const { setPendingTransfers } = require('./lib/routes/confirm-dtmf');
 setPendingTransfers(pendingTransfers);
 
-// Tool endpoint: Ultravox llama aquí directamente cuando detecta la intención
+// toolHook: Jambonz llama aquí cuando Ultravox invoca la herramienta transfer_to_ivr
 app.post('/tool/transfer_to_ivr', (req, res) => {
   const callSid = req.query.callSid;
-  const intent = (req.body.intent || '').toLowerCase().trim();
+  // Log completo para ver el formato exacto que manda Jambonz
+  logger.info({ callSid, body: JSON.stringify(req.body), query: req.query }, 'toolHook recibido - body completo');
+
+  // Jambonz puede enviar los args en distintos campos según la versión
+  const args = req.body.args || req.body.arguments || req.body.tool_args || req.body;
+  const intent = ((args && args.intent) || req.body.intent || '').toLowerCase().trim();
   const dtmf = getDtmfForIntent(intent) || 'WWWWWW0';
 
-  logger.info({ callSid, intent, dtmf }, 'Tool call recibido de Ultravox');
+  logger.info({ callSid, intent, dtmf }, 'Tool call procesado - transfer guardado');
 
-  pendingTransfers.set(callSid, { intent, dtmf });
-
-  try {
-    db.logTransfer({ callSid, intent, dtmf, phoneFrom: null, success: true });
-  } catch (err) {
-    logger.error({ err }, 'Error guardando log de transfer');
+  if (callSid && intent) {
+    pendingTransfers.set(callSid, { intent, dtmf });
+    try {
+      db.logTransfer({ callSid, intent, dtmf, phoneFrom: null, success: true });
+    } catch (err) {
+      logger.error({ err }, 'Error guardando log de transfer');
+    }
   }
 
-  res.json({ result: `Transferencia iniciada para ${intent}. Despídete brevemente del usuario y termina.` });
+  res.json({ result: `Transferencia iniciada para ${intent}. Despídete brevemente del usuario y termina la conversación.` });
 });
 
 // actionHook del verbo llm: llamado por Jambonz cuando el LLM termina
