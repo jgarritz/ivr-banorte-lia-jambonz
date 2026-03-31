@@ -60,7 +60,7 @@ app.post('/call-hook/final', (req, res) => {
   const callSid = req.body.call_sid || req.body.callSid;
   const transfer = pendingTransfers.get(callSid);
 
-  logger.info({ callSid, hasTransfer: !!transfer }, 'call-hook/final recibido');
+  logger.info({ callSid, hasTransfer: !!transfer, fullBody: JSON.stringify(req.body) }, 'call-hook/final recibido');
 
   if (transfer) {
     logger.info({ callSid, intent: transfer.intent, dtmf: transfer.dtmf }, 'Iniciando dial al IVR');
