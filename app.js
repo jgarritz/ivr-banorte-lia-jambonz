@@ -30,17 +30,17 @@ const { setPendingTransfers } = require('./lib/routes/confirm-dtmf');
 setPendingTransfers(pendingTransfers);
 
 // toolHook: Jambonz llama aquí cuando Ultravox invoca la herramienta transfer_to_ivr
+// Body de Jambonz: { tool_call_id, name, args: { intent }, call_sid, from, to, ... }
 app.post('/tool/transfer_to_ivr', (req, res) => {
-  const callSid = req.query.callSid;
-  // Log completo para ver el formato exacto que manda Jambonz
-  logger.info({ callSid, body: JSON.stringify(req.body), query: req.query }, 'toolHook recibido - body completo');
+  logger.info({ body: JSON.stringify(req.body), query: req.query }, 'toolHook recibido - body completo');
 
-  // Jambonz puede enviar los args en distintos campos según la versión
-  const args = req.body.args || req.body.arguments || req.body.tool_args || req.body;
-  const intent = ((args && args.intent) || req.body.intent || '').toLowerCase().trim();
+  const callSid = req.body.call_sid || req.body.callSid || req.query.callSid;
+  const toolCallId = req.body.tool_call_id;
+  const args = req.body.args || {};
+  const intent = (args.intent || req.body.intent || '').toLowerCase().trim();
   const dtmf = getDtmfForIntent(intent) || 'WWWWWW0';
 
-  logger.info({ callSid, intent, dtmf }, 'Tool call procesado - transfer guardado');
+  logger.info({ callSid, toolCallId, intent, dtmf }, 'toolHook procesado');
 
   if (callSid && intent) {
     pendingTransfers.set(callSid, { intent, dtmf });
@@ -51,7 +51,8 @@ app.post('/tool/transfer_to_ivr', (req, res) => {
     }
   }
 
-  res.json({ result: `Transferencia iniciada para ${intent}. Despídete brevemente del usuario y termina la conversación.` });
+  // Jambonz espera { result: '...' } y añade type/invocation_id automáticamente
+  res.json({ result: `Transferencia iniciada para ${intent}. Despídete brevemente del usuario.` });
 });
 
 // actionHook del verbo llm: llamado por Jambonz cuando el LLM termina
