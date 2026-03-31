@@ -3,6 +3,7 @@ const http = require('http');
 const express = require('express');
 const pino = require('pino');
 const db = require('./lib/db');
+const { getDtmfForIntent } = require('./lib/intent-map');
 const { createWsServer, pendingTransfers } = require('./lib/ws-handler');
 
 const logger = pino({ name: 'ivr-banorte-lia' });
@@ -28,11 +29,50 @@ const dashboard = require('./lib/routes/dashboard');
 const { setPendingTransfers } = require('./lib/routes/confirm-dtmf');
 setPendingTransfers(pendingTransfers);
 
-// Mantener call-hook como HTTP fallback (por si acaso)
-// pero el flujo principal va por WebSocket
+// Tool endpoint: Ultravox llama aquí directamente cuando detecta la intención
+app.post('/tool/transfer_to_ivr', (req, res) => {
+  const callSid = req.query.callSid;
+  const intent = (req.body.intent || '').toLowerCase().trim();
+  const dtmf = getDtmfForIntent(intent) || 'WWWWWW0';
+
+  logger.info({ callSid, intent, dtmf }, 'Tool call recibido de Ultravox');
+
+  pendingTransfers.set(callSid, { intent, dtmf });
+
+  try {
+    db.logTransfer({ callSid, intent, dtmf, phoneFrom: null, success: true });
+  } catch (err) {
+    logger.error({ err }, 'Error guardando log de transfer');
+  }
+
+  res.json({ result: `Transferencia iniciada para ${intent}. Despídete brevemente del usuario y termina.` });
+});
+
+// actionHook del verbo llm: llamado por Jambonz cuando el LLM termina
 app.post('/call-hook/final', (req, res) => {
-  // Este ya no se usa en modo WS, el verb:hook se maneja en el WS handler
-  res.json([{ verb: 'hangup' }]);
+  const callSid = req.body.call_sid || req.body.callSid;
+  const transfer = pendingTransfers.get(callSid);
+
+  logger.info({ callSid, hasTransfer: !!transfer }, 'call-hook/final recibido');
+
+  if (transfer) {
+    logger.info({ callSid, intent: transfer.intent, dtmf: transfer.dtmf }, 'Iniciando dial al IVR');
+    res.json([
+      {
+        verb: 'dial',
+        target: [{
+          type: 'phone',
+          number: process.env.IVR_NUMBER || '+528181569600',
+          trunk: process.env.CARRIER_NAME,
+        }],
+        answerOnBridge: true,
+        confirmHook: `${process.env.BASE_URL}/confirm-dtmf?callSid=${encodeURIComponent(callSid)}`,
+      },
+    ]);
+  } else {
+    logger.info({ callSid }, 'Sin transfer pendiente, hangup');
+    res.json([{ verb: 'hangup' }]);
+  }
 });
 
 app.use('/confirm-dtmf', confirmDtmf);
