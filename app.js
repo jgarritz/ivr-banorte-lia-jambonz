@@ -52,7 +52,7 @@ app.post('/tool/transfer_to_ivr', (req, res) => {
   }
 
   // Jambonz espera { result: '...' } y añade type/invocation_id automáticamente
-  res.json({ result: `Transferencia iniciada para ${intent}. Despídete brevemente del usuario.` });
+  res.json({ result: `Transferencia iniciada para ${intent}. Di SOLO "Un momento, te estoy transfiriendo." y llama a hangUp INMEDIATAMENTE. NO digas nada más, NO te despidas.` });
 });
 
 // actionHook del verbo llm: llamado por Jambonz cuando el LLM termina
